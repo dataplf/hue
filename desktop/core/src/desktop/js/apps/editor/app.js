@@ -22,6 +22,7 @@ import 'ext/bootstrap-datepicker.min';
 import 'ext/jquery.hotkeys';
 import 'jquery/plugins/jquery.hdfstree';
 
+import { HIDE_GLOBAL_ALERTS_TOPIC } from 'reactComponents/AlertComponent/events';
 import { registerHueWorkers } from 'sql/workers/hueWorkerHandler';
 import huePubSub from 'utils/huePubSub';
 import I18n from 'utils/i18n';
@@ -303,18 +304,12 @@ huePubSub.subscribe('app.dom.loaded', app => {
 
     if (window.EDITOR_ENABLE_QUERY_SCHEDULING) {
       viewModel = new EditorViewModel(
-        window.EDITOR_ID,
-        window.NOTEBOOKS_JSON,
         window.EDITOR_VIEW_MODEL_OPTIONS,
         window.CoordinatorEditorViewModel,
         window.RunningCoordinatorModel
       );
     } else {
-      viewModel = new EditorViewModel(
-        window.EDITOR_ID,
-        window.NOTEBOOKS_JSON,
-        window.EDITOR_VIEW_MODEL_OPTIONS
-      );
+      viewModel = new EditorViewModel(window.EDITOR_VIEW_MODEL_OPTIONS);
     }
     ko.applyBindings(viewModel, $(window.EDITOR_BINDABLE_ELEMENT)[0]);
     viewModel.init();
@@ -574,7 +569,7 @@ huePubSub.subscribe('app.dom.loaded', app => {
       value => {
         viewModel.isEditing(!viewModel.isEditing());
         if (value) {
-          $('.jHueNotify').remove();
+          huePubSub.publish(HIDE_GLOBAL_ALERTS_TOPIC);
           isAssistAvailable = viewModel.assistAvailable();
           wasLeftPanelVisible = viewModel.isLeftPanelVisible();
           wasRightPanelVisible = viewModel.isRightPanelVisible();

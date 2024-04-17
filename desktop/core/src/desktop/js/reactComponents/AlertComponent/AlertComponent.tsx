@@ -14,54 +14,112 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { AlertProps } from 'antd/lib/alert';
 import Alert from 'cuix/dist/components/Alert/Alert';
 
-import huePubSub from 'utils/huePubSub';
 import './AlertComponent.scss';
+import {
+  GLOBAL_ERROR_TOPIC,
+  GLOBAL_INFO_TOPIC,
+  GLOBAL_WARNING_TOPIC,
+  HIDE_GLOBAL_ALERTS_TOPIC
+} from './events';
+import { HueAlert } from './types';
+import { useHuePubSub } from '../useHuePubSub';
+import { i18nReact } from 'utils/i18nReact';
 
-interface ErrorAlert {
-  message: string;
+type alertType = AlertProps['type'];
+
+interface VisibleAlert {
+  alert: HueAlert;
+  type: alertType;
+  timeoutHandle?: number;
 }
 
-const AlertComponent: React.FC = () => {
-  const [errors, setErrors] = useState<ErrorAlert[]>([]);
+const clearCloseTimeout = (alert: VisibleAlert) => {
+  if (alert.timeoutHandle) {
+    clearTimeout(alert.timeoutHandle);
+  }
+};
 
-  useEffect(() => {
-    const hueSub = huePubSub.subscribe('hue.global.error', (newError: ErrorAlert) => {
-      if (!newError.message) {
-        return;
+const AlertComponent: React.FC = () => {
+  const [alerts, setAlerts] = useState<VisibleAlert[]>([]);
+  const updateAlerts = (alert: HueAlert, type: alertType) => {
+    if (!alert.message) {
+      return;
+    }
+    setAlerts(activeAlerts => {
+      // Prevent showing the same message multiple times.
+      // TODO: Consider showing a count in the error notification when the same message is reported multiple times.
+      if (activeAlerts.some(activeAlerts => activeAlerts.alert.message === alert.message)) {
+        return activeAlerts;
       }
 
-      setErrors(activeErrors => {
-        // Prevent showing the same message multiple times.
-        // TODO: Consider showing a count in the error notification when the same message is reported multiple times.
-        if (activeErrors.some(activeError => activeError.message === newError.message)) {
-          return activeErrors;
-        }
-        return [...activeErrors, newError];
-      });
-    });
-    return () => {
-      hueSub.remove();
-    };
-  }, []);
+      const newAlert: VisibleAlert = { alert, type };
 
-  const handleClose = (errorObjToClose: ErrorAlert) => {
-    const filteredErrors = errors.filter(errorObj => errorObj !== errorObjToClose);
-    setErrors(filteredErrors);
+      if (type === 'info' || alert.noStick) {
+        newAlert.timeoutHandle = setTimeout(() => {
+          handleClose(newAlert);
+        }, 3000);
+      }
+
+      return [...activeAlerts, newAlert];
+    });
   };
 
-  //TODO: add support for warnings and success messages
+  useHuePubSub<HueAlert>({
+    topic: GLOBAL_ERROR_TOPIC,
+    callback: newAlert => updateAlerts(newAlert, 'error')
+  });
+
+  useHuePubSub<HueAlert>({
+    topic: GLOBAL_INFO_TOPIC,
+    callback: newAlert => updateAlerts(newAlert, 'info')
+  });
+
+  useHuePubSub<HueAlert>({
+    topic: GLOBAL_WARNING_TOPIC,
+    callback: newAlert => updateAlerts(newAlert, 'warning')
+  });
+
+  useHuePubSub<void>({
+    topic: HIDE_GLOBAL_ALERTS_TOPIC,
+    callback: () => {
+      alerts.forEach(visibleAlert => clearCloseTimeout(visibleAlert));
+      setAlerts([]);
+    }
+  });
+
+  const handleClose = (alertToClose: VisibleAlert) => {
+    const filteredAlerts = alerts.filter(alert => alert !== alertToClose);
+    clearCloseTimeout(alertToClose);
+    setAlerts(filteredAlerts);
+  };
+
+  const { t } = i18nReact.useTranslation();
+
+  const getHeader = (alert: VisibleAlert) => {
+    if (alert.type === 'error') {
+      return t('Error');
+    } else if (alert.type === 'info') {
+      return t('Info');
+    } else if (alert.type === 'warning') {
+      return t('Warning');
+    }
+  };
+
   return (
     <div className="hue-alert flash-messages cuix antd">
-      {errors.map(errorObj => (
+      {alerts.map(visibleAlert => (
         <Alert
-          key={errorObj.message}
-          type="error"
-          message={errorObj.message}
+          key={visibleAlert.alert.message}
+          type={visibleAlert.type}
+          message={getHeader(visibleAlert)}
+          description={visibleAlert.alert.message}
+          showIcon={true}
           closable={true}
-          onClose={() => handleClose(errorObj)}
+          onClose={() => handleClose(visibleAlert)}
         />
       ))}
     </div>

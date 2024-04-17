@@ -370,16 +370,16 @@ SERVER_EMAIL = desktop.conf.DJANGO_SERVER_EMAIL.get()
 EMAIL_BACKEND = desktop.conf.DJANGO_EMAIL_BACKEND.get()
 EMAIL_SUBJECT_PREFIX = 'Hue %s - ' % desktop.conf.CLUSTER_ID.get()
 
+if desktop.conf.CORS_ENABLED.get():
+  # Permissive CORS for public /api
+  INSTALLED_APPS.append('corsheaders')
+  MIDDLEWARE.insert(0, 'corsheaders.middleware.CorsMiddleware')
 
-# Permissive CORS for public /api
-INSTALLED_APPS.append('corsheaders')
-MIDDLEWARE.insert(0, 'corsheaders.middleware.CorsMiddleware')
-CORS_URLS_REGEX = r'^/api/.*$|/saml2/login/'
-CORS_ALLOW_CREDENTIALS = True
-if sys.version_info[0] > 2:
-  CORS_ALLOW_ALL_ORIGINS = True
-else:
-  CORS_ORIGIN_ALLOW_ALL = True
+  CORS_URLS_REGEX = r'^/api/.*$|/saml2/login/'
+  CORS_ALLOW_CREDENTIALS = desktop.conf.CORS_ALLOW_CREDENTIALS.get()
+
+  CORS_ALLOWED_ORIGINS = desktop.conf.CORS_ALLOWED_ORIGINS.get() or []
+  CORS_ALLOW_ALL_ORIGINS = not bool(CORS_ALLOWED_ORIGINS)
 
 # Configure database
 if os.getenv('DESKTOP_DB_CONFIG'):
@@ -507,18 +507,9 @@ SECURE_SSL_REDIRECT = desktop.conf.SECURE_SSL_REDIRECT.get()
 SECURE_SSL_HOST = desktop.conf.SECURE_SSL_HOST.get()
 SECURE_REDIRECT_EXEMPT = desktop.conf.SECURE_REDIRECT_EXEMPT.get()
 
-# django-nose test specifics
-TEST_RUNNER = 'desktop.lib.test_runners.HueTestRunner'
 # Turn off cache middleware
 if 'test' in sys.argv:
   CACHE_MIDDLEWARE_SECONDS = 0
-
-# Limit Nose coverage to Hue apps
-NOSE_ARGS = [
-  '--cover-package=%s' % ','.join([app.name for app in appmanager.DESKTOP_APPS + appmanager.DESKTOP_LIBS]),
-  '--no-path-adjustment',
-  '--traverse-namespace'
-]
 
 TIME_ZONE = desktop.conf.TIME_ZONE.get()
 
@@ -747,8 +738,27 @@ if desktop.conf.TASK_SERVER.ENABLED.get() or desktop.conf.TASK_SERVER.BEAT_ENABL
   CELERY_ACCEPT_CONTENT = ['json']
   CELERY_RESULT_BACKEND = desktop.conf.TASK_SERVER.CELERY_RESULT_BACKEND.get()
   CELERY_TASK_SERIALIZER = 'json'
+  CELERY_ENABLE_UTC = True
+  CELERY_TIMEZONE = "America/Los_Angeles"
 
   CELERYD_OPTS = desktop.conf.TASK_SERVER.RESULT_CELERYD_OPTS.get()
+  CELERY_TASK_DEFAULT_QUEUE = 'default'
+
+  CELERY_TASK_QUEUES = {
+    'low_priority': {
+        'exchange': 'low_priority', # unused
+        'routing_key': 'low_priority',
+    },
+    'high_priority': {
+        'exchange': 'high_priority', # unused
+        'routing_key': 'high_priority',
+    },
+    'default': {
+         'exchange': 'default',
+         'routing_key': 'default'
+    },
+  }
+
 
 # %n will be replaced with the first part of the nodename.
 # CELERYD_LOG_FILE="/var/log/celery/%n%I.log"
